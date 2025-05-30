@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quản lý Prompt</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+  <div class="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-6">
+    <h1 class="text-2xl font-bold text-center text-indigo-600 mb-4">📚 Quản lý Prompt Cá Nhân</h1>
+
+    <!-- Thêm Prompt -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <input id="title" type="text" placeholder="Tiêu đề" class="border rounded p-2 w-full" />
+      <input id="content" type="text" placeholder="Nội dung prompt" class="border rounded p-2 w-full" />
+      <input id="category" type="text" placeholder="Danh mục (VD: Toán, AI...)" class="border rounded p-2 w-full" />
+    </div>
+    <div class="flex gap-2 mb-4">
+      <button onclick="addPrompt()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded">➕ Thêm Prompt</button>
+      <button onclick="exportPrompts()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">⬇️ Xuất JSON</button>
+      <input type="file" id="importFile" class="hidden" onchange="importPrompts(event)" />
+      <button onclick="document.getElementById('importFile').click()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded">⬆️ Nhập Prompt</button>
+    </div>
+
+    <!-- Tìm kiếm -->
+    <input id="search" oninput="renderPrompts()" type="text" placeholder="🔍 Tìm theo tiêu đề hoặc nội dung..." class="w-full border rounded p-2 mb-4" />
+
+    <!-- Danh sách Prompt -->
+    <div id="promptList" class="grid gap-4"></div>
+  </div>
+
+  <script>
+    let prompts = JSON.parse(localStorage.getItem("prompts")) || [];
+    let editingIndex = -1;
+
+    function renderPrompts() {
+      const search = document.getElementById("search").value.toLowerCase();
+      const list = document.getElementById("promptList");
+      list.innerHTML = "";
+
+      prompts.forEach((p, i) => {
+        if (
+          !p.title.toLowerCase().includes(search) &&
+          !p.content.toLowerCase().includes(search)
+        ) return;
+
+        const div = document.createElement("div");
+        div.className = "border p-4 rounded shadow bg-gray-50 flex flex-col gap-2";
+        div.innerHTML = `
+          <div><strong>${p.title}</strong> (${p.category})</div>
+          <div>${p.content}</div>
+          <div class="flex gap-2">
+            <button onclick="copyPrompt(${i})" class="bg-blue-400 text-white px-2 py-1 rounded">📋 Sao chép</button>
+            <button onclick="editPrompt(${i})" class="bg-yellow-400 text-white px-2 py-1 rounded">✏️ Sửa</button>
+            <button onclick="deletePrompt(${i})" class="bg-red-400 text-white px-2 py-1 rounded">🗑️ Xoá</button>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+
+      localStorage.setItem("prompts", JSON.stringify(prompts));
+    }
+
+    function addPrompt() {
+      const title = document.getElementById("title").value.trim();
+      const content = document.getElementById("content").value.trim();
+      const category = document.getElementById("category").value.trim();
+
+      if (!title || !content || !category) {
+        alert("Vui lòng nhập đầy đủ tiêu đề, nội dung và danh mục.");
+        return;
+      }
+
+      if (editingIndex >= 0) {
+        prompts[editingIndex] = { title, content, category };
+        editingIndex = -1;
+      } else {
+        prompts.push({ title, content, category });
+      }
+
+      document.getElementById("title").value = "";
+      document.getElementById("content").value = "";
+      document.getElementById("category").value = "";
+
+      renderPrompts();
+    }
+
+    function deletePrompt(index) {
+      if (confirm("Bạn có chắc muốn xoá prompt này?")) {
+        prompts.splice(index, 1);
+        renderPrompts();
+      }
+    }
+
+    function editPrompt(index) {
+      const p = prompts[index];
+      document.getElementById("title").value = p.title;
+      document.getElementById("content").value = p.content;
+      document.getElementById("category").value = p.category;
+      editingIndex = index;
+    }
+
+    function copyPrompt(index) {
+      navigator.clipboard.writeText(prompts[index].content);
+      alert("Đã sao chép prompt!");
+    }
+
+    function exportPrompts() {
+      const blob = new Blob([JSON.stringify(prompts, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "prompts.json";
+      a.click();
+    }
+
+    function importPrompts(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (!Array.isArray(imported)) {
+            alert("File JSON không hợp lệ!");
+            return;
+          }
+
+          // Loại bỏ prompt bị trùng tiêu đề trước khi gộp
+          const existingTitles = new Set(prompts.map(p => p.title));
+          const newPrompts = imported.filter(p => !existingTitles.has(p.title));
+          prompts = prompts.concat(newPrompts);
+
+          renderPrompts();
+        } catch (err) {
+          alert("Không đọc được file JSON!");
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    renderPrompts();
+  </script>
+</body>
+</html>
