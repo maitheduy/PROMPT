@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quản lý Prompt nâng cao</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+  <div class="max-w-5xl mx-auto bg-white shadow-lg rounded-lg p-6">
+    <h1 class="text-2xl font-bold text-center text-indigo-600 mb-4">📚 Quản lý Prompt Cá Nhân</h1>
+
+    <!-- Thêm Prompt -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <input id="title" type="text" placeholder="Tiêu đề" class="border rounded p-2 w-full" />
+      <input id="content" type="text" placeholder="Nội dung prompt" class="border rounded p-2 w-full" />
+      <input id="category" type="text" placeholder="Danh mục (VD: Toán, AI...)" class="border rounded p-2 w-full" />
+    </div>
+    <div class="flex gap-2 mb-4">
+      <button onclick="addPrompt()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded">➕ Thêm Prompt</button>
+      <button onclick="exportPrompts()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">⬇️ Xuất JSON</button>
+      <input type="file" id="importFile" class="hidden" onchange="importPrompts(event)" />
+      <button onclick="document.getElementById('importFile').click()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded">⬆️ Nhập Prompt</button>
+    </div>
+
+    <!-- Toggle Group Display -->
+    <div class="mb-4 flex items-center gap-4">
+      <label class="font-medium">Chế độ hiển thị:</label>
+      <select id="viewMode" onchange="renderPrompts()" class="border rounded p-2">
+        <option value="grouped" selected>Theo nhóm danh mục</option>
+        <option value="all">Tất cả prompt</option>
+      </select>
+    </div>
+
+    <!-- Bộ lọc danh mục cho chế độ nhóm -->
+    <div id="categoryFilterWrap" class="mb-4 hidden">
+      <label for="categoryFilter" class="font-medium mr-2">Chọn danh mục:</label>
+      <select id="categoryFilter" onchange="renderPrompts()" class="border rounded p-2">
+        <option value="all">Tất cả</option>
+      </select>
+    </div>
+
+    <input id="search" oninput="renderPrompts()" type="text" placeholder="🔍 Tìm theo tiêu đề hoặc nội dung..." class="w-full border rounded p-2 mb-4" />
+
+    <!-- Danh sách Prompt -->
+    <div id="promptList" class="space-y-6"></div>
+
+    <!-- Phân trang -->
+    <div id="pagination" class="mt-6 flex justify-center gap-2"></div>
+  </div>
+
+  <script>
+    let prompts = JSON.parse(localStorage.getItem("prompts")) || [];
+    let editingIndex = -1;
+    const itemsPerPage = 5;
+    let currentPage = 1;
+
+    function renderPrompts() {
+      const viewMode = document.getElementById('viewMode')?.value || 'grouped';
+      const categoryFilterWrap = document.getElementById("categoryFilterWrap");
+      const categoryFilter = document.getElementById("categoryFilter");
+
+      if (viewMode === "grouped") {
+        categoryFilterWrap.classList.remove("hidden");
+      } else {
+        categoryFilterWrap.classList.add("hidden");
+      }
+
+      const search = document.getElementById("search").value.toLowerCase();
+      const promptList = document.getElementById("promptList");
+      const filtered = prompts.filter(p =>
+        p.title.toLowerCase().includes(search) || p.content.toLowerCase().includes(search)
+      );
+
+      if (viewMode === "all") {
+        promptList.innerHTML = "";
+        filtered.forEach((p, index) => {
+          const div = document.createElement("div");
+          div.className = "border p-4 rounded shadow bg-gray-50 mb-3";
+          div.innerHTML = `
+            <div><strong>${p.title}</strong> (${p.category})</div>
+            <div>${p.content}</div>
+            <div class="flex gap-2 mt-2">
+              <button onclick="copyPrompt(${prompts.findIndex(x => x.title === p.title)})" class="bg-blue-400 text-white px-2 py-1 rounded">📋 Sao chép</button>
+              <button onclick="editPrompt(${prompts.findIndex(x => x.title === p.title)})" class="bg-yellow-400 text-white px-2 py-1 rounded">✏️ Sửa</button>
+              <button onclick="deletePrompt(${prompts.findIndex(x => x.title === p.title)})" class="bg-red-400 text-white px-2 py-1 rounded">🗑️ Xoá</button>
+            </div>
+          `;
+          promptList.appendChild(div);
+        });
+        renderPagination(1);
+        return;
+      }
+
+      const categories = {};
+      filtered.forEach(p => {
+        if (!categories[p.category]) categories[p.category] = [];
+        categories[p.category].push(p);
+      });
+
+      const categoryKeys = Object.keys(categories);
+      const totalPages = Math.ceil(categoryKeys.length / itemsPerPage);
+      const start = (currentPage - 1) * itemsPerPage;
+
+      const selectedCategory = categoryFilter?.value || "all";
+      let filteredCategories = categoryKeys;
+      if (selectedCategory !== "all") {
+        filteredCategories = categoryKeys.filter(cat => cat === selectedCategory);
+      }
+
+      const visibleCategories = filteredCategories.slice(start, start + itemsPerPage);
+      promptList.innerHTML = "";
+
+      visibleCategories.forEach(cat => {
+        const section = document.createElement("div");
+        section.innerHTML = `<h2 class="text-lg font-semibold text-blue-600 mb-2">${cat}</h2>`;
+        categories[cat].forEach((p, i) => {
+          const index = prompts.findIndex(x => x.title === p.title);
+          section.innerHTML += `
+            <div class="border p-4 rounded shadow bg-gray-50 mb-3">
+              <div><strong>${p.title}</strong></div>
+              <div>${p.content}</div>
+              <div class="flex gap-2 mt-2">
+                <button onclick="copyPrompt(${index})" class="bg-blue-400 text-white px-2 py-1 rounded">📋 Sao chép</button>
+                <button onclick="editPrompt(${index})" class="bg-yellow-400 text-white px-2 py-1 rounded">✏️ Sửa</button>
+                <button onclick="deletePrompt(${index})" class="bg-red-400 text-white px-2 py-1 rounded">🗑️ Xoá</button>
+              </div>
+            </div>
+          `;
+        });
+        promptList.appendChild(section);
+      });
+
+      // Populate category filter
+      if (viewMode === "grouped" && categoryFilter) {
+        categoryFilter.innerHTML = '<option value="all">Tất cả</option>';
+        categoryKeys.forEach(cat => {
+          const option = document.createElement("option");
+          option.value = cat;
+          option.textContent = cat;
+          categoryFilter.appendChild(option);
+        });
+      }
+
+      renderPagination(totalPages);
+      localStorage.setItem("prompts", JSON.stringify(prompts));
+    }
+
+    function renderPagination(totalPages) {
+      const pagination = document.getElementById("pagination");
+      pagination.innerHTML = "";
+      for (let i = 1; i <= totalPages; i++) {
+        const btn = document.createElement("button");
+        btn.innerText = i;
+        btn.className = `px-3 py-1 rounded ${i === currentPage ? 'bg-indigo-500 text-white' : 'bg-gray-200'}`;
+        btn.onclick = () => {
+          currentPage = i;
+          renderPrompts();
+        };
+        pagination.appendChild(btn);
+      }
+    }
+
+    function addPrompt() {
+      const title = document.getElementById("title").value.trim();
+      const content = document.getElementById("content").value.trim();
+      const category = document.getElementById("category").value.trim();
+
+      if (!title || !content || !category) {
+        alert("Vui lòng nhập đầy đủ tiêu đề, nội dung và danh mục.");
+        return;
+      }
+
+      if (editingIndex >= 0) {
+        prompts[editingIndex] = { title, content, category };
+        editingIndex = -1;
+      } else {
+        prompts.push({ title, content, category });
+      }
+
+      document.getElementById("title").value = "";
+      document.getElementById("content").value = "";
+      document.getElementById("category").value = "";
+
+      renderPrompts();
+    }
+
+    function deletePrompt(index) {
+      if (confirm("Bạn có chắc muốn xoá prompt này?")) {
+        prompts.splice(index, 1);
+        renderPrompts();
+      }
+    }
+
+    function editPrompt(index) {
+      const p = prompts[index];
+      document.getElementById("title").value = p.title;
+      document.getElementById("content").value = p.content;
+      document.getElementById("category").value = p.category;
+      editingIndex = index;
+    }
+
+    function copyPrompt(index) {
+      navigator.clipboard.writeText(prompts[index].content);
+      alert("Đã sao chép prompt!");
+    }
+
+    function exportPrompts() {
+      const blob = new Blob([JSON.stringify(prompts, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "prompts.json";
+      a.click();
+    }
+
+    function importPrompts(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (!Array.isArray(imported)) {
+            alert("File JSON phải là một mảng các prompt.");
+            return;
+          }
+
+          const validPrompts = imported.filter(p =>
+            typeof p.title === "string" &&
+            typeof p.content === "string" &&
+            typeof p.category === "string"
+          );
+
+          const existingTitles = new Set(prompts.map(p => p.title));
+          const newPrompts = validPrompts.filter(p => !existingTitles.has(p.title));
+          prompts = prompts.concat(newPrompts);
+
+          alert(`Đã nhập ${newPrompts.length} prompt mới.`);
+          renderPrompts();
+        } catch (err) {
+          alert("Lỗi đọc file JSON: " + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    renderPrompts();
+  </script>
+</body>
+</html>
