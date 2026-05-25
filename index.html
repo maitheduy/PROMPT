@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>📚 Quản lý Prompt Nâng cao - Google Drive Sync - Fixed</title>
+  <title>📚 Quản lý Prompt Nâng cao - Google Drive Sync - Fixed v3</title>
   
   <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -44,11 +44,38 @@
         }
       }
     }
+
+    // FIX v3: kiểm tra sau mỗi lần render, nếu có prompt thì ép ẩn khối rỗng
+    function fixEmptyStateAndTitles() {
+      const emptyState = document.getElementById('emptyState');
+      const hasPrompts = Array.isArray(state.prompts) && state.prompts.length > 0;
+      if (emptyState && hasPrompts) {
+        emptyState.classList.add('hidden', 'force-hidden');
+        emptyState.style.display = 'none';
+        emptyState.setAttribute('aria-hidden', 'true');
+      }
+      document.querySelectorAll('.prompt-card h3').forEach(h => {
+        h.classList.add('prompt-title-fixed');
+        h.style.display = 'block';
+        h.style.visibility = 'visible';
+      });
+    }
+
+
+    // FIX v3: bọc renderPrompts để tự sửa giao diện sau khi render
+    if (typeof renderPrompts === 'function' && !window.__renderPromptsFixedV3) {
+      window.__renderPromptsFixedV3 = true;
+      const __oldRenderPrompts = renderPrompts;
+      renderPrompts = function(...args) {
+        const result = __oldRenderPrompts.apply(this, args);
+        fixEmptyStateAndTitles();
+        return result;
+      };
+    }
+
   </script>
   
   <style>
-    /* Force Tailwind-like hidden behavior even if CDN fails or classes conflict */
-    .hidden { display: none !important; }
     /* Custom Styles */
     .mic-button {
       transition: all 0.3s ease;
@@ -225,6 +252,24 @@
       to { transform: rotate(360deg); }
     }
     .sync-icon.spinning { animation: spin 1s linear infinite; }
+
+    /* FIX v3: ép ẩn Empty State khi đã có prompt + làm tiêu đề nổi bật */
+    .force-hidden { display: none !important; visibility: hidden !important; }
+    #emptyState.force-hidden { display: none !important; }
+    .prompt-title-fixed {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      color: #111827 !important;
+      font-size: 1.05rem !important;
+      font-weight: 800 !important;
+      line-height: 1.35 !important;
+      white-space: normal !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      max-width: 100% !important;
+    }
+    .dark .prompt-title-fixed { color: #ffffff !important; }
   </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen p-4 transition-colors duration-300">
@@ -1175,55 +1220,41 @@
       return { filtered, viewMode, categoryFilter };
     }
 
-    function setVisible(el, visible) {
-      if (!el) return;
-      el.classList.toggle('hidden', !visible);
-      el.style.display = visible ? '' : 'none';
-      el.setAttribute('aria-hidden', visible ? 'false' : 'true');
-    }
-
     function renderPrompts() {
-      normalizeAllPrompts();
       const { filtered, viewMode, categoryFilter } = getFilteredPrompts();
       const promptList = document.getElementById('promptList');
       const emptyState = document.getElementById('emptyState');
-      const pagination = document.getElementById('pagination');
-      const categoryFilterWrap = document.getElementById('categoryFilterWrap');
-      const categoryFilterEl = document.getElementById('categoryFilter');
-
+      const setEmptyVisible = (visible) => {
+        if (!emptyState) return;
+        emptyState.classList.toggle('hidden', !visible);
+        emptyState.classList.toggle('force-hidden', !visible);
+        emptyState.style.display = visible ? '' : 'none';
+        emptyState.setAttribute('aria-hidden', visible ? 'false' : 'true');
+      };
+      
       if (viewMode === 'grouped') {
-        setVisible(categoryFilterWrap, true);
-        if (categoryFilterEl) {
-          const selectedBefore = categoryFilterEl.value || categoryFilter || 'all';
-          const allCategories = [...new Set(state.prompts.map(p => p.category || 'Chưa phân loại'))].sort();
-          categoryFilterEl.innerHTML = '<option value="all">📁 Tất cả danh mục</option>' +
-            allCategories.map(cat => `<option value="${sanitize(cat)}">${sanitize(cat)}</option>`).join('');
-          categoryFilterEl.value = allCategories.includes(selectedBefore) ? selectedBefore : 'all';
-        }
+        document.getElementById('categoryFilterWrap').classList.remove('hidden');
+        const categoryFilterEl = document.getElementById('categoryFilter');
+        const categories = [...new Set(filtered.map(p => p.category))].sort();
+        categoryFilterEl.innerHTML = '<option value="all">📁 Tất cả danh mục</option>' + 
+          categories.map(cat => `<option value="${sanitize(cat)}">${sanitize(cat)}</option>`).join('');
       } else {
-        setVisible(categoryFilterWrap, false);
+        document.getElementById('categoryFilterWrap').classList.add('hidden');
       }
 
-      if (!filtered.length) {
-        if (promptList) promptList.innerHTML = '';
-        setVisible(emptyState, true);
-        if (pagination) pagination.innerHTML = '';
-        updateBulkActions();
-        updateStats();
+      if (filtered.length === 0) {
+        promptList.innerHTML = '';
+        setEmptyVisible(true);
+        document.getElementById('pagination').innerHTML = '';
         return;
       }
-
-      // Quan trọng: nếu có prompt thì phải ẩn tuyệt đối khối “Chưa có prompt nào”.
-      setVisible(emptyState, false);
+      setEmptyVisible(false);
 
       if (viewMode === 'all' || viewMode === 'grid') {
         renderList(filtered, viewMode === 'grid');
       } else {
         renderGrouped(filtered);
       }
-
-      updateBulkActions();
-      updateStats();
     }
 
     function renderList(prompts, isGrid = false) {
@@ -1310,8 +1341,8 @@
                 aria-label="Toggle favorite">
                 ${isFavorite ? '⭐' : '☆'}
               </button>
-              <h3 class="font-semibold text-gray-800 dark:text-white truncate" title="${sanitize(safeTitle)}">
-                ${sanitize(safeTitle)}
+              <h3 class="prompt-title-fixed" title="${sanitize(safeTitle)}">
+                📝 ${sanitize(safeTitle || 'Không có tiêu đề')}
               </h3>
             </div>
             
@@ -1849,8 +1880,6 @@
       document.getElementById('cancelEdit')?.addEventListener('click', cancelEdit);
       
       renderPrompts();
-      const emptyStateInit = document.getElementById('emptyState');
-      if (state.prompts.length > 0) setVisible(emptyStateInit, false);
       
       if (state.prompts.length === 0) {
         showToast('👋 Chào mừng! Hãy thêm prompt đầu tiên của bạn', 'info', 5000);
@@ -1883,6 +1912,35 @@
     window.syncToDrive = syncToDrive;
     window.cancelSync = cancelSync;
     window.TrashManager = TrashManager;
+
+    // FIX v3: kiểm tra sau mỗi lần render, nếu có prompt thì ép ẩn khối rỗng
+    function fixEmptyStateAndTitles() {
+      const emptyState = document.getElementById('emptyState');
+      const hasPrompts = Array.isArray(state.prompts) && state.prompts.length > 0;
+      if (emptyState && hasPrompts) {
+        emptyState.classList.add('hidden', 'force-hidden');
+        emptyState.style.display = 'none';
+        emptyState.setAttribute('aria-hidden', 'true');
+      }
+      document.querySelectorAll('.prompt-card h3').forEach(h => {
+        h.classList.add('prompt-title-fixed');
+        h.style.display = 'block';
+        h.style.visibility = 'visible';
+      });
+    }
+
+
+    // FIX v3: bọc renderPrompts để tự sửa giao diện sau khi render
+    if (typeof renderPrompts === 'function' && !window.__renderPromptsFixedV3) {
+      window.__renderPromptsFixedV3 = true;
+      const __oldRenderPrompts = renderPrompts;
+      renderPrompts = function(...args) {
+        const result = __oldRenderPrompts.apply(this, args);
+        fixEmptyStateAndTitles();
+        return result;
+      };
+    }
+
   </script>
 </body>
 </html>
