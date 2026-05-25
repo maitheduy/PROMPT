@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>📚 Quản lý Prompt Nâng cao - Google Drive Sync</title>
+  <title>📚 Quản lý Prompt Nâng cao - Google Drive Sync - Fixed</title>
   
   <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -47,6 +47,8 @@
   </script>
   
   <style>
+    /* Force Tailwind-like hidden behavior even if CDN fails or classes conflict */
+    .hidden { display: none !important; }
     /* Custom Styles */
     .mic-button {
       transition: all 0.3s ease;
@@ -1173,34 +1175,55 @@
       return { filtered, viewMode, categoryFilter };
     }
 
+    function setVisible(el, visible) {
+      if (!el) return;
+      el.classList.toggle('hidden', !visible);
+      el.style.display = visible ? '' : 'none';
+      el.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    }
+
     function renderPrompts() {
+      normalizeAllPrompts();
       const { filtered, viewMode, categoryFilter } = getFilteredPrompts();
       const promptList = document.getElementById('promptList');
       const emptyState = document.getElementById('emptyState');
-      
+      const pagination = document.getElementById('pagination');
+      const categoryFilterWrap = document.getElementById('categoryFilterWrap');
+      const categoryFilterEl = document.getElementById('categoryFilter');
+
       if (viewMode === 'grouped') {
-        document.getElementById('categoryFilterWrap').classList.remove('hidden');
-        const categoryFilterEl = document.getElementById('categoryFilter');
-        const categories = [...new Set(filtered.map(p => p.category))].sort();
-        categoryFilterEl.innerHTML = '<option value="all">📁 Tất cả danh mục</option>' + 
-          categories.map(cat => `<option value="${sanitize(cat)}">${sanitize(cat)}</option>`).join('');
+        setVisible(categoryFilterWrap, true);
+        if (categoryFilterEl) {
+          const selectedBefore = categoryFilterEl.value || categoryFilter || 'all';
+          const allCategories = [...new Set(state.prompts.map(p => p.category || 'Chưa phân loại'))].sort();
+          categoryFilterEl.innerHTML = '<option value="all">📁 Tất cả danh mục</option>' +
+            allCategories.map(cat => `<option value="${sanitize(cat)}">${sanitize(cat)}</option>`).join('');
+          categoryFilterEl.value = allCategories.includes(selectedBefore) ? selectedBefore : 'all';
+        }
       } else {
-        document.getElementById('categoryFilterWrap').classList.add('hidden');
+        setVisible(categoryFilterWrap, false);
       }
 
-      if (filtered.length === 0) {
-        promptList.innerHTML = '';
-        emptyState.classList.remove('hidden');
-        document.getElementById('pagination').innerHTML = '';
+      if (!filtered.length) {
+        if (promptList) promptList.innerHTML = '';
+        setVisible(emptyState, true);
+        if (pagination) pagination.innerHTML = '';
+        updateBulkActions();
+        updateStats();
         return;
       }
-      emptyState.classList.add('hidden');
+
+      // Quan trọng: nếu có prompt thì phải ẩn tuyệt đối khối “Chưa có prompt nào”.
+      setVisible(emptyState, false);
 
       if (viewMode === 'all' || viewMode === 'grid') {
         renderList(filtered, viewMode === 'grid');
       } else {
         renderGrouped(filtered);
       }
+
+      updateBulkActions();
+      updateStats();
     }
 
     function renderList(prompts, isGrid = false) {
@@ -1826,6 +1849,8 @@
       document.getElementById('cancelEdit')?.addEventListener('click', cancelEdit);
       
       renderPrompts();
+      const emptyStateInit = document.getElementById('emptyState');
+      if (state.prompts.length > 0) setVisible(emptyStateInit, false);
       
       if (state.prompts.length === 0) {
         showToast('👋 Chào mừng! Hãy thêm prompt đầu tiên của bạn', 'info', 5000);
