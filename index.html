@@ -1,136 +1,158 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>📚 Quản lý Prompt Nâng cao - Google Drive Sync - Fixed v4</title>
-  
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3"></script>
-
-  <script>
-    tailwind.config = { darkMode: 'class' };
-  </script>
-
-  <style>
-    /* ... (giữ nguyên các style cũ) ... */
-
-    .prompt-card {
-      transition: all 0.2s ease;
-      border-left: 4px solid transparent;
-    }
-    .prompt-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
-      border-left-color: #6366f1;
-    }
-
-    /* === FIX TIÊU ĐỀ === */
-    .prompt-title-fixed {
-      display: block !important;
-      visibility: visible !important;
-      opacity: 1 !important;
-      font-size: 1.1rem !important;
-      font-weight: 800 !important;
-      line-height: 1.4 !important;
-      color: #111827 !important;
-      white-space: normal !important;
-      overflow: visible !important;
-      text-overflow: unset !important;
-      max-width: none !important;
-      flex: 1 1 auto !important;
-      min-width: 0 !important;
-    }
-    .dark .prompt-title-fixed {
-      color: #ffffff !important;
-    }
-
-    /* Đảm bảo flex cha không ép tiêu đề biến mất */
-    .prompt-header-left {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex: 1 1 auto;
-      min-width: 0;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt Manager - Google Drive Sync</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    
+    <style>
+        .prompt-card:hover .copy-btn { opacity: 1; }
+        .loading-spinner { border-top-color: #6366f1; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
 </head>
-<body class="bg-gray-50 dark:bg-gray-900 min-h-screen p-4">
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
 
-  <!-- ... (giữ nguyên phần body đến trước script) ... -->
-
-  <script>
-    // ==================== ... (giữ nguyên toàn bộ code cũ đến createPromptCard) ====================
-
-    function createPromptCard(p, index, isCompact = false) {
-      p = normalizePrompt(p, index);
-      const safeTitle = p.title || p.name || `Prompt ${index + 1}`;
-
-      return `
-        <div class="prompt-card bg-white dark:bg-gray-750 border dark:border-gray-700 rounded-xl p-4 shadow-sm hover:shadow-md transition-all" 
-          data-index="${index}">
-          
-          <!-- Card Header -->
-          <div class="flex items-start justify-between gap-3 mb-3">
-            <div class="prompt-header-left">
-              <input type="checkbox" onchange="toggleSelection(${index})" 
-                class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 mt-0.5"
-                ${state.selectedItems.has(index) ? 'checked' : ''} />
-              
-              <button onclick="toggleFavorite(${index})" 
-                class="text-xl hover:scale-110 transition ${p.favorite ? 'text-amber-500' : 'text-gray-300 hover:text-amber-400'}">
-                ${p.favorite ? '⭐' : '☆'}
-              </button>
-              
-              <h3 class="prompt-title-fixed" title="${sanitize(safeTitle)}">
-                📝 ${sanitize(safeTitle)}
-              </h3>
+    <div id="app" class="max-w-5xl mx-auto p-4">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm">
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                🚀 Prompt Library
+            </h1>
+            <div id="auth-section">
+                <button id="login-btn" onclick="handleAuthClick()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
+                    Đăng nhập Google
+                </button>
+                <div id="user-info" class="hidden flex items-center gap-3">
+                    <span id="sync-status" class="text-xs text-green-500">● Đã đồng bộ</span>
+                    <button onclick="handleSignoutClick()" class="text-sm text-red-500 underline">Thoát</button>
+                </div>
             </div>
-            
-            <div class="flex items-center gap-1 flex-shrink-0">
-              <span class="text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-full whitespace-nowrap">
-                ${sanitize(p.category || 'Chưa phân loại')}
-              </span>
-            </div>
-          </div>
+        </header>
 
-          <!-- Phần còn lại giữ nguyên -->
-          ${/* ... nội dung cũ ... */ ''}
+        <!-- Search & Add -->
+        <div class="flex gap-4 mb-6">
+            <input type="text" id="searchBar" placeholder="Tìm kiếm prompt..." class="flex-1 p-3 rounded-xl border dark:bg-slate-800 dark:border-slate-700 outline-none focus:ring-2 focus:ring-indigo-500">
+            <button onclick="openModal()" class="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 dark:shadow-none">
+                + Thêm mới
+            </button>
         </div>
-      `;
-    }
 
-    // Cải thiện hàm fix
-    function fixEmptyStateAndTitles() {
-      const emptyState = document.getElementById('emptyState');
-      if (emptyState && state.prompts?.length > 0) {
-        emptyState.classList.add('hidden', 'force-hidden');
-        emptyState.style.display = 'none';
-      }
+        <!-- Prompt Grid -->
+        <div id="promptGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Cards will be injected here -->
+        </div>
+    </div>
 
-      document.querySelectorAll('.prompt-card h3').forEach(h => {
-        h.classList.add('prompt-title-fixed');
-      });
-    }
+    <!-- Script xử lý Logic -->
+    <script>
+        // --- CẤU HÌNH ---
+        const CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com'; // Thay bằng Client ID của bạn
+        const API_KEY = 'YOUR_API_KEY'; // Thay bằng API Key của bạn
+        const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest";
+        const SCOPES = "https://www.googleapis.com/auth/drive.file";
 
-    // Monkey patch renderPrompts (chạy sau khi hàm đã định nghĩa)
-    const originalRenderPrompts = renderPrompts;
-    renderPrompts = function(...args) {
-      const result = originalRenderPrompts.apply(this, args);
-      setTimeout(fixEmptyStateAndTitles, 10); // delay nhỏ để DOM kịp render
-      return result;
-    };
+        let tokenClient;
+        let gapiInited = false;
+        let gsiInited = false;
+        let fileId = null;
+        let state = { prompts: [] };
 
-    // Gọi fix thêm sau khi load
-    document.addEventListener('DOMContentLoaded', () => {
-      // ... code cũ ...
-      setTimeout(fixEmptyStateAndTitles, 300);
-    });
+        // 1. Khởi tạo Google API
+        function gapiLoaded() {
+            gapi.load('client', async () => {
+                await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] });
+                gapiInited = true;
+                maybeEnableButtons();
+            });
+        }
 
-    // Expose functions...
-    window.renderPrompts = renderPrompts;
-    // ... các expose khác giữ nguyên
-  </script>
+        function gsiLoaded() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: async (resp) => {
+                    if (resp.error) throw resp;
+                    document.getElementById('login-btn').classList.add('hidden');
+                    document.getElementById('user-info').classList.remove('hidden');
+                    await loadOrStorageFile();
+                },
+            });
+            gsiInited = true;
+            maybeEnableButtons();
+        }
+
+        function maybeEnableButtons() {
+            if (gapiInited && gsiInited) console.log("Google SDK Ready");
+        }
+
+        // 2. Xử lý File trên Drive
+        async function loadOrStorageFile() {
+            // Tìm file prompts_storage.json
+            const response = await gapi.client.drive.files.list({
+                q: "name = 'prompts_storage.json' and trashed = false",
+                fields: 'files(id, name)'
+            });
+            
+            const files = response.result.files;
+            if (files.length > 0) {
+                fileId = files[0].id;
+                const content = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
+                state.prompts = content.result;
+            } else {
+                // Tạo mới nếu chưa có
+                const metadata = { name: 'prompts_storage.json', mimeType: 'application/json' };
+                const res = await gapi.client.drive.files.create({ resource: metadata, fields: 'id' });
+                fileId = res.result.id;
+                await saveToDrive();
+            }
+            renderPrompts();
+        }
+
+        async function saveToDrive() {
+            if (!fileId) return;
+            document.getElementById('sync-status').innerText = "⏳ Đang lưu...";
+            await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${gapi.client.getToken().access_token}` },
+                body: JSON.stringify(state.prompts)
+            });
+            document.getElementById('sync-status').innerText = "● Đã đồng bộ";
+        }
+
+        // 3. Hiển thị UI
+        function renderPrompts() {
+            const grid = document.getElementById('promptGrid');
+            grid.innerHTML = state.prompts.map((p, index) => `
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all relative group">
+                    <div class="flex justify-between mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-indigo-500">${DOMPurify.sanitize(p.category)}</span>
+                        <div class="flex gap-2">
+                            <button onclick="copyPrompt(${index})" class="text-slate-400 hover:text-indigo-500 p-1">📋</button>
+                            <button onclick="deletePrompt(${index})" class="text-slate-400 hover:text-red-500 p-1">🗑️</button>
+                        </div>
+                    </div>
+                    <h3 class="font-bold text-lg mb-2">${DOMPurify.sanitize(p.title)}</h3>
+                    <p class="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 mb-4">${DOMPurify.sanitize(p.content)}</p>
+                </div>
+            `).join('');
+        }
+
+        function copyPrompt(index) {
+            navigator.clipboard.writeText(state.prompts[index].content);
+            alert("Đã sao chép prompt!");
+        }
+
+        // Khởi chạy khi load trang
+        window.onload = () => { gapiLoaded(); gsiLoaded(); };
+        function handleAuthClick() { tokenClient.requestAccessToken(); }
+    </script>
+    
+    <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script src="https://accounts.google.com/gsi/client" onload="gsiLoaded()"></script>
 </body>
 </html>
